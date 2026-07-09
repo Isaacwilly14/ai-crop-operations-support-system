@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django
+db.s*lite3
+media/
+
+# Virtual Environmen*s
+venv/
+.env/
+.env
+
+# VS*Code*.vscode/
+
+# JetBrains
+.idea/
+
+#*Jupyter
+.ipynb_checkpoints/
+
+# OS
+*DS_Store
+Thumbs.db
+
+# Logs**.log
+
+# Conda
+.*ond*/
+
+# Static Build Files
+staticfile*/
