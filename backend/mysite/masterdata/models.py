@@ -41,15 +41,37 @@ class CropSubGroup(models.Model):
         return self.subgroup_name
 
 
+class GrowingGroup(models.Model):
+    growing_group_code = models.CharField(
+        max_length=2
+    )
+
+    growing_group_name = models.CharField(
+        max_length=100
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    def __str__(self):
+        return self.growing_group_name
+
+
 class Variety(models.Model):
     variety_code = models.CharField(
-        max_length=20,
+        max_length=5,
         unique=True
     )
 
     subgroup = models.ForeignKey(
         CropSubGroup,
         on_delete=models.PROTECT
+    )
+
+    growing_group = models.ForeignKey(
+        GrowingGroup,
+        on_delete=models.PROTECT,
     )
 
     variety_name = models.CharField(

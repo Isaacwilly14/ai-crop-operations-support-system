@@ -1,12 +1,17 @@
 from django.contrib import admin
-from .models import Crop, CropSubGroup, Variety
+from .models import (
+    Crop,
+    CropSubGroup,
+    GrowingGroup,
+    Variety,
+)
 
 
 # ==========================
 # Selecta Wagagai OSS Branding
 # ==========================
 
-admin.site.site_header = "Selecta Wagagai OSS System"
+admin.site.site_header = "Selecta Wagagai Production Smart Planning System"
 admin.site.site_title = "Selecta Wagagai OSS"
 admin.site.index_title = "Operations Support System"
 
@@ -24,10 +29,6 @@ class CropAdmin(admin.ModelAdmin):
 
     search_fields = (
         "crop_code",
-        "crop_name",
-    )
-
-    ordering = (
         "crop_name",
     )
 
@@ -53,8 +54,21 @@ class CropSubGroupAdmin(admin.ModelAdmin):
         "crop",
     )
 
-    ordering = (
-        "subgroup_name",
+
+# ==========================
+# Growing Group Administration
+# ==========================
+
+@admin.register(GrowingGroup)
+class GrowingGroupAdmin(admin.ModelAdmin):
+    list_display = (
+        "growing_group_code",
+        "growing_group_name",
+    )
+
+    search_fields = (
+        "growing_group_code",
+        "growing_group_name",
     )
 
 
@@ -68,6 +82,7 @@ class VarietyAdmin(admin.ModelAdmin):
         "variety_code",
         "variety_name",
         "subgroup",
+        "growing_group",
     )
 
     search_fields = (
@@ -77,8 +92,5 @@ class VarietyAdmin(admin.ModelAdmin):
 
     list_filter = (
         "subgroup",
-    )
-
-    ordering = (
-        "variety_name",
+        "growing_group",
     )
