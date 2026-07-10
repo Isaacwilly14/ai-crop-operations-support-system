@@ -115,15 +115,19 @@ class GreenhouseBed(models.Model):
         blank=True
     )
 
-    class Meta:
-        unique_together = (
-            "greenhouse",
-            "bed_no",
-        )
+class Meta:
+    unique_together = (
+        "greenhouse",
+        "side",
+        "bed_no",
+    )
 
-    def __str__(self):
-        return f"{self.greenhouse.greenhouse_code} - Bed {self.bed_no}"
-    
+def __str__(self):
+    return (
+        f"{self.greenhouse.greenhouse_code} - "
+        f"{self.side} - Bed {self.bed_no}"
+    )
+
 class Variety(models.Model):
     variety_code = models.CharField(
         max_length=5,
