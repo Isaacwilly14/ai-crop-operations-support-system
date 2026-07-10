@@ -57,7 +57,73 @@ class GrowingGroup(models.Model):
     def __str__(self):
         return self.growing_group_name
 
+class Greenhouse(models.Model):
+    greenhouse_code = models.CharField(
+        max_length=5,
+        unique=True
+    )
 
+    greenhouse_name = models.CharField(
+        max_length=100
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    def __str__(self):
+        return self.greenhouse_code
+class GreenhouseBed(models.Model):
+
+    SIDE_CHOICES = [
+        ("LEFT", "Left"),
+        ("RIGHT", "Right"),
+        ("A", "A"),
+        ("B", "B"),
+        ("C", "C"),
+        ("D", "D"),
+        ("E", "E"),
+        ("F", "F"),
+        ("G", "G"),
+        ("H", "H"),
+   
+    ]
+
+    greenhouse = models.ForeignKey(
+        Greenhouse,
+        on_delete=models.PROTECT
+    )
+
+    side = models.CharField(
+        max_length=5,
+        choices=SIDE_CHOICES
+    )
+
+    bed_no = models.IntegerField()
+
+    valve = models.IntegerField()
+
+    bay_no = models.IntegerField()
+
+    mother_plants = models.IntegerField()
+
+    control_valve = models.BooleanField(
+        default=False
+    )
+
+    notes = models.TextField(
+        blank=True
+    )
+
+    class Meta:
+        unique_together = (
+            "greenhouse",
+            "bed_no",
+        )
+
+    def __str__(self):
+        return f"{self.greenhouse.greenhouse_code} - Bed {self.bed_no}"
+    
 class Variety(models.Model):
     variety_code = models.CharField(
         max_length=5,

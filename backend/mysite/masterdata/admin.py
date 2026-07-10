@@ -3,6 +3,8 @@ from .models import (
     Crop,
     CropSubGroup,
     GrowingGroup,
+    Greenhouse,
+    GreenhouseBed,
     Variety,
 )
 
@@ -71,7 +73,38 @@ class GrowingGroupAdmin(admin.ModelAdmin):
         "growing_group_name",
     )
 
+@admin.register(Greenhouse)
+class GreenhouseAdmin(admin.ModelAdmin):
+    list_display = (
+        "greenhouse_code",
+        "greenhouse_name",
+    )
 
+    search_fields = (
+        "greenhouse_code",
+        "greenhouse_name",
+    )
+@admin.register(GreenhouseBed)
+class GreenhouseBedAdmin(admin.ModelAdmin):
+    list_display = (
+        "greenhouse",
+        "side",
+        "bed_no",
+        "valve",
+        "bay_no",
+        "mother_plants",
+        "control_valve",
+    )
+
+    list_filter = (
+        "greenhouse",
+        "side",
+        "control_valve",
+    )
+
+    search_fields = (
+        "bed_no",
+    )
 # ==========================
 # Variety Administration
 # ==========================
