@@ -1,0 +1,12 @@
+#user-tools {
+    font-size: 11px !important;
+    color: #d8e6ef !important;
+}
+
+#user-tools a {
+    color: #d8e6ef !important;
+}
+
+#user-tools a:hover {
+    color: white !important;
+}

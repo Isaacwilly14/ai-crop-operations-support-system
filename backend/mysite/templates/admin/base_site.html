@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block branding %}
+<div style="
+    display:flex;
+    align-items:center;
+    gap:12px;
+">
+
+    <img
+        src="{% static 'images/wagagai_logo.jpeg' %}"
+        alt="Selecta Wagagai Logo"
+        height="70"
+        style="display:block;"
+    nowrap;
+    ">
+       
+   <strong><h1>Selecta Wagagai Production Smart Planning System</h1></strong>
+    </span>
+
+</div>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
