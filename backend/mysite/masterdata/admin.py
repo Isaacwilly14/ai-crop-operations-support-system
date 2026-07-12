@@ -64,9 +64,22 @@ class CropSubGroupAdmin(admin.ModelAdmin):
 
 @admin.register(GrowingGroup)
 class GrowingGroupAdmin(admin.ModelAdmin):
+
     list_display = (
         "growing_group_code",
         "growing_group_name",
+        "water_requirement",
+        "sensitivity_level",
+        "placement_preference",
+        "edge_placement_allowed",
+        "color_code",
+    )
+
+    list_filter = (
+        "water_requirement",
+        "sensitivity_level",
+        "placement_preference",
+        "edge_placement_allowed",
     )
 
     search_fields = (
@@ -74,13 +87,19 @@ class GrowingGroupAdmin(admin.ModelAdmin):
         "growing_group_name",
     )
 
+    ordering = (
+        "growing_group_code",
+    )
 
+    list_per_page = 25
+    
 # ==========================================================
 # Greenhouse Administration
 # ==========================================================
 
 @admin.register(Greenhouse)
 class GreenhouseAdmin(admin.ModelAdmin):
+
     list_display = (
         "greenhouse_code",
         "greenhouse_name",
@@ -91,6 +110,7 @@ class GreenhouseAdmin(admin.ModelAdmin):
         "occupied_beds",
         "available_beds",
         "active_varieties",
+        "available_sides",
     )
 
     search_fields = (
@@ -98,6 +118,11 @@ class GreenhouseAdmin(admin.ModelAdmin):
         "greenhouse_name",
     )
 
+    ordering = (
+        "greenhouse_code",
+    )
+
+    list_per_page = 25
 
 # ==========================================================
 # Greenhouse Bed Administration
@@ -105,14 +130,19 @@ class GreenhouseAdmin(admin.ModelAdmin):
 
 @admin.register(GreenhouseBed)
 class GreenhouseBedAdmin(admin.ModelAdmin):
+
     list_display = (
         "greenhouse",
         "side",
         "bed_no",
+        "is_edge_bed",
         "mother_plants",
         "occupied_capacity",
         "available_capacity",
         "utilization_percentage",
+        "recommendation_score",
+        "allocation_priority",
+        "compatible_growing_groups",
         "occupancy_details",
         "is_empty",
         "is_full",
@@ -126,6 +156,7 @@ class GreenhouseBedAdmin(admin.ModelAdmin):
 
     search_fields = (
         "bed_no",
+        "greenhouse__greenhouse_code",
     )
 
     ordering = (
@@ -133,6 +164,9 @@ class GreenhouseBedAdmin(admin.ModelAdmin):
         "side",
         "bed_no",
     )
+
+    list_per_page = 50
+
 # ==========================================================
 # Variety Administration
 # ==========================================================
