@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Planning Dashboard</title>
+</head>
+
+<body>
+
+    <h1>Planning Dashboard</h1>
+
+    <hr>
+
+    <h2>Overview</h2>
+
+    <p>
+        Total Batches:
+        {{ total_batches }}
+    </p>
+
+    <p>
+        Total Imported Rows:
+        {{ total_rows }}
+    </p>
+
+    <p>
+        Valid Rows:
+        {{ valid_rows }}
+    </p>
+
+    <p>
+        Invalid Rows:
+        {{ invalid_rows }}
+    </p>
+
+    <p>
+        Sticking Plans:
+        {{ sticking_plans }}
+    </p>
+
+    <hr>
+
+    <h2>Greenhouse Capacity Dashboard</h2>
+
+    <table border="1">
+
+        <tr>
+            <th>Greenhouse</th>
+            <th>Capacity</th>
+            <th>Planned</th>
+            <th>Remaining</th>
+            <th>Utilization %</th>
+            <th>Status</th>
+        </tr>
+
+        {% for row in greenhouse_status %}
+
+        <tr>
+
+            <td>
+                {{ row.greenhouse.greenhouse_code }}
+            </td>
+
+            <td>
+                {{ row.capacity }}
+            </td>
+
+            <td>
+                {{ row.planned }}
+            </td>
+
+            <td>
+                {{ row.remaining }}
+            </td>
+
+            <td>
+                {{ row.utilization }}
+            </td>
+
+            <td>
+
+                {% if row.status == "OVERBOOKED" %}
+
+                    🔥 OVERBOOKED
+
+                {% elif row.status == "WARNING" %}
+
+                    ⚠ WARNING
+
+                {% else %}
+
+                    ✅ SAFE
+
+                {% endif %}
+
+            </td>
+
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+    <hr>
+
+    <h2>Navigation</h2>
+
+    <ul>
+
+        <li>
+            /planning/upload/
+                Upload Sticking Plan
+            </a>
+        </li>
+
+        <li>
+            /planning/batches/
+                Import Batches
+            </a>
+        </li>
+
+        <li>
+            /planning/validation-errors/
+                Validation Errors
+            </a>
+        </li>
+
+    </ul>
+
+</body>
+
+</html>

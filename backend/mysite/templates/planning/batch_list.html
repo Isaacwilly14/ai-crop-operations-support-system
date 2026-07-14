@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Import Batches</title>
+</head>
+
+<body>
+
+    <h1>Import Batches</h1>
+
+    <table border="1">
+
+        <tr>
+            <th>Batch</th>
+            <th>File</th>
+            <th>Status</th>
+            <th>Imported</th>
+            <th>Actions</th>
+        </tr>
+
+        {% for batch in batches %}
+
+        <tr>
+
+            <td>{{ batch.batch_reference }}</td>
+
+            <td>{{ batch.file_name }}</td>
+
+            <td>{{ batch.status }}</td>
+
+            <td>{{ batch.imported_at }}</td>
+
+            <td>
+                <!-- 1. Details Link (New Feature) -->
+                <a href="/planning/batch/{{ batch.id }}/">Details</a>
+
+                |
+
+                <!-- 2. Revalidate Link -->
+                <a href="/planning/revalidate/{{ batch.id }}/">Revalidate</a>
+
+                |
+
+                <!-- 3. Approve Link -->
+                <a href="/planning/approve/{{ batch.id }}/">Approve</a>
+            </td>
+
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+    <br>
+
+    <!-- Fixed Upload Link -->
+    <a href="/planning/upload/">Upload New File</a>
+
+</body>
+
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Allocation Proposal</title>
+</head>
+
+<body>
+
+    {% if error %}
+
+        <h1>{{ error }}</h1>
+
+    {% else %}
+
+        <h1>Allocation Proposal</h1>
+
+        <p>
+            Variety:
+            {{ variety.variety_code }}
+            -
+            {{ variety.variety_name }}
+        </p>
+
+        <p>
+            Growing Group:
+            {{ variety.growing_group.growing_group_code }}
+        </p>
+
+        <hr>
+
+        <h2>Recommended Greenhouse</h2>
+
+        <p>
+            Greenhouse:
+            <strong>
+                {{ recommendation.greenhouse.greenhouse_code }}
+            </strong>
+        </p>
+
+        <p>
+            Remaining Capacity:
+            <strong>
+                {{ recommendation.remaining_capacity }}
+            </strong>
+        </p>
+
+        <p>
+            Total Capacity:
+            {{ recommendation.greenhouse.total_capacity }}
+        </p>
+
+        <p>
+
+            {% if recommendation.compatible %}
+
+                ✅ Growing Group Compatible
+
+            {% else %}
+
+                ⚠ Capacity-Based Recommendation
+
+            {% endif %}
+
+        </p>
+
+    {% endif %}
+
+</body>
+
+</html>

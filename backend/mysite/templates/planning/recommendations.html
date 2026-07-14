@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Greenhouse Recommendations</title>
+</head>
+
+<body>
+
+    <h1>Greenhouse Recommendations</h1>
+
+    <table border="1">
+
+        <tr>
+            <th>Rank</th>
+            <th>Greenhouse</th>
+            <th>Capacity</th>
+            <th>Planned</th>
+            <th>Remaining</th>
+        </tr>
+
+        {% for item in recommendations %}
+
+        <tr>
+
+            <td>
+                {{ forloop.counter }}
+            </td>
+
+            <td>
+                {{ item.greenhouse.greenhouse_code }}
+            </td>
+
+            <td>
+                {{ item.capacity }}
+            </td>
+
+            <td>
+                {{ item.planned_quantity }}
+            </td>
+
+            <td>
+                {{ item.remaining_capacity }}
+            </td>
+
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+</body>
+
+</html>

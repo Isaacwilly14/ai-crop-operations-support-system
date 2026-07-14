@@ -527,3 +527,65 @@ class StickingPlanLine(models.Model):
 
     def __str__(self):
         return self.reference
+class AllocationProposal(models.Model):
+
+    STATUS_CHOICES = [
+        ("PROPOSED", "Proposed"),
+        ("ACCEPTED", "Accepted"),
+        ("REJECTED", "Rejected"),
+    ]
+
+    sticking_plan_line = models.ForeignKey(
+        StickingPlanLine,
+        on_delete=models.CASCADE,
+        related_name="allocation_proposals"
+    )
+
+    greenhouse = models.ForeignKey(
+        Greenhouse,
+        on_delete=models.PROTECT
+    )
+
+    proposed_capacity = models.IntegerField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="PROPOSED"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.sticking_plan_line.reference}"
+            f" -> "
+            f"{self.greenhouse.greenhouse_code}"
+        )
+class BedAllocation(models.Model):
+
+    allocation = models.ForeignKey(
+        AllocationProposal,
+        on_delete=models.CASCADE,
+        related_name="bed_allocations"
+    )
+
+    bed = models.ForeignKey(
+        "masterdata.GreenhouseBed",
+        on_delete=models.PROTECT
+    )
+
+    allocated_quantity = models.IntegerField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.bed}"
+            f" - "
+            f"{self.allocated_quantity}"
+        )

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Allocation Accepted</title>
+</head>
+
+<body>
+
+    <h1>Allocation Accepted</h1>
+
+    <hr>
+
+    <p>
+        Sticking Plan:
+        {{ proposal.sticking_plan_line.reference }}
+    </p>
+
+    <p>
+        Greenhouse:
+        {{ proposal.greenhouse.greenhouse_code }}
+    </p>
+
+    <p>
+        Quantity:
+        {{ proposal.proposed_capacity }}
+    </p>
+
+    <p>
+        Proposal Status:
+        <strong>{{ proposal.status }}</strong>
+    </p>
+
+    <p>
+        Plan Status:
+        <strong>{{ proposal.sticking_plan_line.status }}</strong>
+    </p>
+
+    <hr>
+
+    <p>
+        Allocation has been successfully accepted.
+    </p>
+
+</body>
+
+</html>

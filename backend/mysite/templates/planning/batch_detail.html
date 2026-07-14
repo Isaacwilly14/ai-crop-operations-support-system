@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Batch Details</title>
+</head>
+
+<body>
+
+    <h1>Batch Details</h1>
+
+    <hr>
+
+    <p>
+        Batch:
+        {{ batch.batch_reference }}
+    </p>
+
+    <p>
+        File:
+        {{ batch.file_name }}
+    </p>
+
+    <p>
+        Status:
+        {{ batch.status }}
+    </p>
+
+    <p>
+        Imported:
+        {{ batch.imported_at }}
+    </p>
+
+    <hr>
+
+    <p>
+        Valid Rows:
+        {{ valid_rows }}
+    </p>
+
+    <p>
+        Invalid Rows:
+        {{ invalid_rows }}
+    </p>
+
+    <hr>
+
+    <table border="1">
+
+        <tr>
+            <th>Row</th>
+            <th>Variety</th>
+            <th>Greenhouse</th>
+            <th>Status</th>
+            <th>Message</th>
+        </tr>
+
+        {% for row in rows %}
+
+        <tr>
+
+            <td>{{ row.row_number }}</td>
+
+            <td>{{ row.variety_code }}</td>
+
+            <td>{{ row.greenhouse_code }}</td>
+
+            <td>{{ row.validation_status }}</td>
+
+            <td>{{ row.validation_message }}</td>
+
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+</body>
+
+</html>

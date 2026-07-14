@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Bed Allocation</title>
+</head>
+
+<body>
+
+{% if error %}
+
+    <h1>{{ error }}</h1>
+
+{% else %}
+
+    <h1>Bed Allocation Created</h1>
+
+    <p>
+        Greenhouse:
+        {{ bed_allocation.bed.greenhouse.greenhouse_code }}
+    </p>
+
+    <p>
+        Bed:
+        {{ bed_allocation.bed }}
+    </p>
+
+    <p>
+        Allocated Quantity:
+        {{ bed_allocation.allocated_quantity }}
+    </p>
+
+{% endif %}
+
+</body>
+
+</html>

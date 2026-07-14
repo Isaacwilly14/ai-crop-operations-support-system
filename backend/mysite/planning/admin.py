@@ -5,6 +5,7 @@ from .models import (
     ImportedStickingPlanRow,
     StickingPlanHeader,
     StickingPlanLine,
+    AllocationProposal,
 )
 
 
@@ -135,3 +136,21 @@ class StickingPlanLineAdmin(admin.ModelAdmin):
     @admin.display(description="Variety")
     def variety_display(self, obj):
         return obj.variety.variety_code
+@admin.register(AllocationProposal)
+class AllocationProposalAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "sticking_plan_line",
+        "greenhouse",
+        "proposed_capacity",
+        "status",
+        "created_at",
+    )
+
+    list_filter = (
+        "status",
+    )
+
+    ordering = (
+        "-created_at",
+    )

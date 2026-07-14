@@ -1,3 +1,5 @@
+from django.db import models
+
 from django.shortcuts import (
     render,
     get_object_or_404,
@@ -15,6 +17,8 @@ from .models import (
     ImportedStickingPlanRow,
     StickingPlanHeader,
     StickingPlanLine,
+    AllocationProposal,
+    BedAllocation,
 )
 
 
@@ -208,5 +212,538 @@ def approve_batch(request, batch_id):
             "batch": batch,
             "header": header,
             "created_lines": created_lines,
+        }
+    )
+
+
+def batch_list(request):
+
+    batches = (
+        ImportBatch.objects.all()
+        .order_by("-imported_at")
+    )
+
+    return render(
+        request,
+        "planning/batch_list.html",
+        {
+            "batches": batches
+        }
+    )
+
+def dashboard(request):
+
+    total_batches = (
+        ImportBatch.objects.count()
+    )
+
+    total_rows = (
+        ImportedStickingPlanRow.objects.count()
+    )
+
+    valid_rows = (
+        ImportedStickingPlanRow.objects.filter(
+            validation_status="VALID"
+        ).count()
+    )
+
+    invalid_rows = (
+        ImportedStickingPlanRow.objects.filter(
+            validation_status="INVALID"
+        ).count()
+    )
+
+    sticking_plans = (
+        StickingPlanLine.objects.count()
+    )
+
+    greenhouse_status = []
+
+    for greenhouse in Greenhouse.objects.all():
+
+        planned_quantity = (
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .aggregate(
+                total=models.Sum(
+                    "planned_quantity"
+                )
+            )["total"]
+            or 0
+        )
+
+        capacity = greenhouse.total_capacity
+
+        remaining = (
+            capacity -
+            planned_quantity
+        )
+
+        utilization = 0
+
+        if capacity > 0:
+
+            utilization = round(
+                (
+                    planned_quantity
+                    / capacity
+                ) * 100,
+                2
+            )
+
+        if utilization >= 100:
+            status = "OVERBOOKED"
+
+        elif utilization >= 90:
+            status = "WARNING"
+
+        else:
+            status = "SAFE"
+
+        greenhouse_status.append(
+            {
+                "greenhouse": greenhouse,
+                "capacity": capacity,
+                "planned": planned_quantity,
+                "remaining": remaining,
+                "utilization": utilization,
+                "status": status,
+            }
+        )
+
+    return render(
+        request,
+        "planning/dashboard.html",
+        {
+            "total_batches": total_batches,
+            "total_rows": total_rows,
+            "valid_rows": valid_rows,
+            "invalid_rows": invalid_rows,
+            "sticking_plans": sticking_plans,
+            "greenhouse_status": greenhouse_status,
+        }
+    )
+
+def revalidate_batch(request, batch_id):
+
+    batch = get_object_or_404(
+        ImportBatch,
+        id=batch_id
+    )
+
+    rows = (
+        ImportedStickingPlanRow.objects.filter(
+            import_batch=batch
+        )
+    )
+
+    valid_rows = 0
+    invalid_rows = 0
+
+    for row in rows:
+
+        row.validate_row()
+
+        if row.validation_status == "VALID":
+            valid_rows += 1
+        else:
+            invalid_rows += 1
+
+    batch.status = "VALIDATED"
+    batch.save()
+
+    return render(
+        request,
+        "planning/revalidate_batch.html",
+        {
+            "batch": batch,
+            "valid_rows": valid_rows,
+            "invalid_rows": invalid_rows,
+        }
+    )
+def batch_detail(request, batch_id):
+
+    batch = get_object_or_404(
+        ImportBatch,
+        id=batch_id
+    )
+
+    rows = (
+        ImportedStickingPlanRow.objects.filter(
+            import_batch=batch
+        )
+        .order_by("row_number")
+    )
+
+    valid_rows = rows.filter(
+        validation_status="VALID"
+    ).count()
+
+    invalid_rows = rows.filter(
+        validation_status="INVALID"
+    ).count()
+
+    return render(
+        request,
+        "planning/batch_detail.html",
+        {
+            "batch": batch,
+            "rows": rows,
+            "valid_rows": valid_rows,
+            "invalid_rows": invalid_rows,
+        }
+    )
+def greenhouse_recommendations(request):
+
+    recommendations = []
+
+    for greenhouse in Greenhouse.objects.all():
+
+        planned_quantity = (
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .aggregate(
+                total=models.Sum(
+                    "planned_quantity"
+                )
+            )["total"]
+            or 0
+        )
+
+        remaining_capacity = (
+            greenhouse.total_capacity
+            - planned_quantity
+        )
+
+        recommendations.append(
+            {
+                "greenhouse": greenhouse,
+                "remaining_capacity": remaining_capacity,
+                "planned_quantity": planned_quantity,
+                "capacity": greenhouse.total_capacity,
+            }
+        )
+
+    recommendations.sort(
+        key=lambda x: x["remaining_capacity"],
+        reverse=True
+    )
+
+    return render(
+        request,
+        "planning/recommendations.html",
+        {
+            "recommendations": recommendations
+        }
+    )
+def variety_recommendations(request, variety_code):
+
+    try:
+
+        variety = Variety.objects.get(
+            variety_code=variety_code
+        )
+
+    except Variety.DoesNotExist:
+
+        return render(
+            request,
+            "planning/variety_recommendations.html",
+            {
+                "error": "Variety not found"
+            }
+        )
+
+    recommendations = []
+
+    for greenhouse in Greenhouse.objects.all():
+
+        planned_quantity = (
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .aggregate(
+                total=models.Sum(
+                    "planned_quantity"
+                )
+            )["total"]
+            or 0
+        )
+
+        remaining_capacity = (
+            greenhouse.total_capacity -
+            planned_quantity
+        )
+
+        greenhouse_groups = set(
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .values_list(
+                "variety__growing_group__growing_group_code",
+                flat=True
+            )
+        )
+
+        compatibility = (
+            variety.growing_group.growing_group_code
+            in greenhouse_groups
+        )
+
+        recommendations.append(
+            {
+                "greenhouse": greenhouse,
+                "capacity": greenhouse.total_capacity,
+                "planned_quantity": planned_quantity,
+                "remaining_capacity": remaining_capacity,
+                "compatible": compatibility,
+            }
+        )
+
+    recommendations.sort(
+        key=lambda x: (
+            x["compatible"],
+            x["remaining_capacity"]
+        ),
+        reverse=True
+    )
+
+    return render(
+        request,
+        "planning/variety_recommendations.html",
+        {
+            "variety": variety,
+            "recommendations": recommendations,
+        }
+    )
+def allocation_proposal(request, variety_code):
+
+    try:
+
+        variety = Variety.objects.get(
+            variety_code=variety_code
+        )
+
+    except Variety.DoesNotExist:
+
+        return render(
+            request,
+            "planning/allocation_proposal.html",
+            {
+                "error": "Variety not found"
+            }
+        )
+
+    candidates = []
+
+    for greenhouse in Greenhouse.objects.all():
+
+        planned_quantity = (
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .aggregate(
+                total=models.Sum(
+                    "planned_quantity"
+                )
+            )["total"]
+            or 0
+        )
+
+        remaining_capacity = (
+            greenhouse.total_capacity -
+            planned_quantity
+        )
+
+        greenhouse_groups = set(
+            StickingPlanLine.objects.filter(
+                greenhouse=greenhouse
+            )
+            .values_list(
+                "variety__growing_group__growing_group_code",
+                flat=True
+            )
+        )
+
+        compatible = (
+            variety.growing_group.growing_group_code
+            in greenhouse_groups
+        )
+
+        candidates.append(
+            {
+                "greenhouse": greenhouse,
+                "remaining_capacity": remaining_capacity,
+                "compatible": compatible,
+            }
+        )
+
+    candidates.sort(
+        key=lambda x: (
+            x["compatible"],
+            x["remaining_capacity"]
+        ),
+        reverse=True
+    )
+
+    recommendation = None
+
+    if candidates:
+        recommendation = candidates[0]
+
+    return render(
+        request,
+        "planning/allocation_proposal.html",
+        {
+            "variety": variety,
+            "recommendation": recommendation,
+        }
+    )
+def create_allocation_proposal(
+    request,
+    sticking_plan_line_id
+):
+
+    line = get_object_or_404(
+        StickingPlanLine,
+        id=sticking_plan_line_id
+    )
+
+    greenhouse = line.greenhouse
+
+    proposal = AllocationProposal.objects.create(
+        sticking_plan_line=line,
+        greenhouse=greenhouse,
+        proposed_capacity=line.planned_quantity,
+    )
+
+    return render(
+        request,
+        "planning/allocation_created.html",
+        {
+            "proposal": proposal
+        }
+    )
+def accept_allocation(request, proposal_id):
+
+    proposal = get_object_or_404(
+        AllocationProposal,
+        id=proposal_id
+    )
+
+    proposal.status = "ACCEPTED"
+    proposal.save()
+
+    proposal.sticking_plan_line.status = (
+        "ALLOCATED"
+    )
+
+    proposal.sticking_plan_line.save()
+
+    return render(
+        request,
+        "planning/allocation_accepted.html",
+        {
+            "proposal": proposal
+        }
+    )
+def allocation_dashboard(request):
+
+    proposals = (
+        AllocationProposal.objects.all()
+        .order_by("-created_at")
+    )
+
+    proposed_count = (
+        AllocationProposal.objects.filter(
+            status="PROPOSED"
+        ).count()
+    )
+
+    accepted_count = (
+        AllocationProposal.objects.filter(
+            status="ACCEPTED"
+        ).count()
+    )
+
+    rejected_count = (
+        AllocationProposal.objects.filter(
+            status="REJECTED"
+        ).count()
+    )
+
+    total_allocated = (
+        AllocationProposal.objects.filter(
+            status="ACCEPTED"
+        )
+        .aggregate(
+            total=models.Sum(
+                "proposed_capacity"
+            )
+        )["total"]
+        or 0
+    )
+
+    return render(
+        request,
+        "planning/allocation_dashboard.html",
+        {
+            "proposals": proposals,
+            "proposed_count": proposed_count,
+            "accepted_count": accepted_count,
+            "rejected_count": rejected_count,
+            "total_allocated": total_allocated,
+        }
+    )
+from masterdata.models import GreenhouseBed
+
+
+def create_bed_allocation(
+    request,
+    allocation_id
+):
+
+    allocation = get_object_or_404(
+        AllocationProposal,
+        id=allocation_id
+    )
+
+    bed = (
+        GreenhouseBed.objects.filter(
+            greenhouse=allocation.greenhouse
+        )
+        .first()
+    )
+
+    if not bed:
+
+        return render(
+            request,
+            "planning/bed_allocation.html",
+            {
+                "error": (
+                    "No beds found for "
+                    f"{allocation.greenhouse.greenhouse_code}"
+                )
+            }
+        )
+
+    bed_allocation = (
+        BedAllocation.objects.create(
+            allocation=allocation,
+            bed=bed,
+            allocated_quantity=(
+                allocation.proposed_capacity
+            )
+        )
+    )
+
+    return render(
+        request,
+        "planning/bed_allocation.html",
+        {
+            "bed_allocation": bed_allocation,
         }
     )
