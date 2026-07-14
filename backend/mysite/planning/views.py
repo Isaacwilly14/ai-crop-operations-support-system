@@ -1,10 +1,21 @@
-from django.shortcuts import render
-from .models import (
-    ImportBatch,
-    ImportedStickingPlanRow,
+from django.shortcuts import (
+    render,
+    get_object_or_404,
 )
 
 import pandas as pd
+
+from masterdata.models import (
+    Variety,
+    Greenhouse,
+)
+
+from .models import (
+    ImportBatch,
+    ImportedStickingPlanRow,
+    StickingPlanHeader,
+    StickingPlanLine,
+)
 
 
 def upload_sticking_plan(request):
@@ -116,5 +127,86 @@ def upload_sticking_plan(request):
         "planning/upload_sticking_plan.html",
         {
             "message": message
+        }
+    )
+
+
+def validation_errors(request):
+
+    invalid_rows = (
+        ImportedStickingPlanRow.objects.filter(
+            validation_status="INVALID"
+        )
+        .order_by(
+            "row_number"
+        )
+    )
+
+    return render(
+        request,
+        "planning/validation_errors.html",
+        {
+            "invalid_rows": invalid_rows
+        }
+    )
+
+
+def approve_batch(request, batch_id):
+
+    batch = get_object_or_404(
+        ImportBatch,
+        id=batch_id
+    )
+
+    valid_rows = (
+        ImportedStickingPlanRow.objects.filter(
+            import_batch=batch,
+            validation_status="VALID"
+        )
+    )
+
+    header = StickingPlanHeader.objects.create(
+        season="Imported Plan"
+    )
+
+    created_lines = 0
+
+    for row in valid_rows:
+
+        try:
+
+            variety = Variety.objects.get(
+                variety_code=row.variety_code
+            )
+
+            greenhouse = Greenhouse.objects.get(
+                greenhouse_code=row.greenhouse_code
+            )
+
+            StickingPlanLine.objects.create(
+                header=header,
+                variety=variety,
+                greenhouse=greenhouse,
+                sticking_week=row.sticking_week,
+                production_end_week=row.production_end_week,
+                planned_quantity=row.planned_quantity,
+                urc_per_bag=row.urc_per_bag,
+            )
+
+            created_lines += 1
+
+        except Exception:
+            continue
+
+    batch.status = "IMPORTED"
+    batch.save()
+
+    return render(
+        request,
+        "planning/batch_approved.html",
+        {
+            "batch": batch,
+            "header": header,
+            "created_lines": created_lines,
         }
     )

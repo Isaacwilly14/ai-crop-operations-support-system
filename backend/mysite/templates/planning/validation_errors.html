@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Validation Errors</title>
+</head>
+
+<body>
+
+    <h1>Validation Errors</h1>
+
+    <table border="1">
+
+        <tr>
+            <th>Row</th>
+            <th>Variety</th>
+            <th>Greenhouse</th>
+            <th>Error</th>
+        </tr>
+
+        {% for row in invalid_rows %}
+
+        <tr>
+            <td>{{ row.row_number }}</td>
+            <td>{{ row.variety_code }}</td>
+            <td>{{ row.greenhouse_code }}</td>
+            <td>{{ row.validation_message }}</td>
+        </tr>
+
+        {% endfor %}
+
+    </table>
+
+</body>
+
+</html>
