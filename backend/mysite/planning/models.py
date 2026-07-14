@@ -1,6 +1,9 @@
-from django.db import models
-from masterdata.models import Variety, Greenhouse
+from datetime import date, timedelta
 import re
+
+from django.db import models
+
+from masterdata.models import Variety, Greenhouse
 
 
 class ImportBatch(models.Model):
@@ -14,25 +17,31 @@ class ImportBatch(models.Model):
 
     batch_reference = models.CharField(
         max_length=50,
-        unique=True
+        unique=True,
     )
 
     file_name = models.CharField(
-        max_length=255
-    )
+    max_length=255
+)
+
+    uploaded_file = models.FileField(
+    upload_to="imports/",
+    null=True,
+    blank=True
+)
 
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="UPLOADED"
+        default="UPLOADED",
     )
 
     imported_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     notes = models.TextField(
-        blank=True
+        blank=True,
     )
 
     def __str__(self):
@@ -50,57 +59,57 @@ class ImportedStickingPlanRow(models.Model):
     import_batch = models.ForeignKey(
         ImportBatch,
         on_delete=models.CASCADE,
-        related_name="rows"
+        related_name="rows",
     )
 
     row_number = models.IntegerField()
 
     variety_code = models.CharField(
-        max_length=20
+        max_length=20,
     )
 
     variety_name = models.CharField(
         max_length=255,
-        blank=True
+        blank=True,
     )
 
     greenhouse_code = models.CharField(
-        max_length=20
+        max_length=20,
     )
 
     sticking_week = models.CharField(
-        max_length=10
+        max_length=10,
     )
 
     production_end_week = models.CharField(
-        max_length=10
+        max_length=10,
     )
 
     planned_quantity = models.IntegerField(
-        default=0
+        default=0,
     )
 
     urc_per_bag = models.IntegerField(
-        default=0
+        default=0,
     )
 
     validation_status = models.CharField(
         max_length=20,
         choices=VALIDATION_CHOICES,
-        default="PENDING"
+        default="PENDING",
     )
 
     validation_message = models.TextField(
-        blank=True
+        blank=True,
     )
 
     raw_data = models.JSONField(
         null=True,
-        blank=True
+        blank=True,
     )
 
     imported_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     @property
@@ -117,37 +126,28 @@ class ImportedStickingPlanRow(models.Model):
 
     @property
     def valid_sticking_week(self):
-
         pattern = r"^\d{1,2}-\d{4}$"
 
-        if not re.match(
-            pattern,
-            self.sticking_week
-        ):
+        if not re.match(pattern, self.sticking_week):
             return False
 
         week, year = self.sticking_week.split("-")
 
-        week = int(week)
-
-        return 1 <= week <= 53
+        return 1 <= int(week) <= 53
 
     @property
     def valid_end_week(self):
-
         pattern = r"^\d{1,2}-\d{4}$"
 
         if not re.match(
             pattern,
-            self.production_end_week
+            self.production_end_week,
         ):
             return False
 
         week, year = self.production_end_week.split("-")
 
-        week = int(week)
-
-        return 1 <= week <= 53
+        return 1 <= int(week) <= 53
 
     @property
     def quantity_valid(self):
@@ -159,7 +159,6 @@ class ImportedStickingPlanRow(models.Model):
 
     @property
     def validation_errors(self):
-
         errors = []
 
         if not self.variety_exists:
@@ -174,14 +173,12 @@ class ImportedStickingPlanRow(models.Model):
 
         if not self.valid_sticking_week:
             errors.append(
-                f"Invalid Sticking Week: "
-                f"{self.sticking_week}"
+                f"Invalid Sticking Week: {self.sticking_week}"
             )
 
         if not self.valid_end_week:
             errors.append(
-                f"Invalid Production End Week: "
-                f"{self.production_end_week}"
+                f"Invalid Production End Week: {self.production_end_week}"
             )
 
         if not self.quantity_valid:
@@ -197,16 +194,12 @@ class ImportedStickingPlanRow(models.Model):
         return errors
 
     def validate_row(self):
-
         errors = self.validation_errors
 
         if errors:
-
             self.validation_status = "INVALID"
             self.validation_message = "\n".join(errors)
-
         else:
-
             self.validation_status = "VALID"
             self.validation_message = "Validation Passed"
 
@@ -217,3 +210,320 @@ class ImportedStickingPlanRow(models.Model):
             f"{self.import_batch.batch_reference} "
             f"- Row {self.row_number}"
         )
+
+
+class StickingPlanHeader(models.Model):
+
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("APPROVED", "Approved"),
+        ("ALLOCATED", "Allocated"),
+        ("COMPLETED", "Completed"),
+    ]
+
+    reference = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+    )
+
+    season = models.CharField(
+        max_length=100,
+    )
+
+    import_batch = models.ForeignKey(
+        ImportBatch,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="DRAFT",
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    def generate_reference(self):
+
+        year = date.today().year
+
+        sequence = (
+            StickingPlanHeader.objects.count()
+            + 1
+        )
+
+        return (
+            f"SP-"
+            f"{year}-"
+            f"{sequence:03d}"
+        )
+
+    def save(self, *args, **kwargs):
+
+        if not self.reference:
+            self.reference = (
+                self.generate_reference()
+            )
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.reference
+
+class StickingPlanLine(models.Model):
+
+    STATUS_CHOICES = [
+        ("PLANNED", "Planned"),
+        ("ALLOCATED", "Allocated"),
+        ("PRODUCED", "Produced"),
+    ]
+
+    header = models.ForeignKey(
+        StickingPlanHeader,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+
+    reference = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+    )
+
+    variety = models.ForeignKey(
+        Variety,
+        on_delete=models.PROTECT,
+    )
+
+    greenhouse = models.ForeignKey(
+        Greenhouse,
+        on_delete=models.PROTECT,
+    )
+
+    sticking_week = models.CharField(
+        max_length=10,
+    )
+
+    planting_week = models.CharField(
+        max_length=10,
+        blank=True,
+    )
+
+    planting_week_override = models.BooleanField(
+        default=False,
+    )
+
+    production_end_week = models.CharField(
+        max_length=10,
+    )
+
+    planned_quantity = models.IntegerField()
+
+    buffer_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=5.00,
+    )
+
+    urc_per_bag = models.IntegerField(
+        default=0,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="PLANNED",
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    @property
+    def crop(self):
+        return self.variety.subgroup.crop
+
+    @property
+    def growing_group(self):
+        return self.variety.growing_group
+
+    @property
+    def urc_needed(self):
+        buffer_qty = (
+            self.planned_quantity *
+            float(self.buffer_percentage) / 100
+        )
+
+        return round(
+            self.planned_quantity +
+            buffer_qty
+        )
+
+    @property
+    def greenhouse_capacity(self):
+        return self.greenhouse.total_capacity
+
+    @property
+    def available_capacity(self):
+        return self.greenhouse.available_capacity
+
+    @property
+    def exceeds_capacity(self):
+        return (
+            self.planned_quantity >
+            self.greenhouse.available_capacity
+        )
+
+    @property
+    def greenhouse_planned_quantity(self):
+        return (
+            StickingPlanLine.objects.filter(
+                greenhouse=self.greenhouse,
+                status="PLANNED",
+            )
+            .exclude(pk=self.pk)
+            .aggregate(
+                total=models.Sum(
+                    "planned_quantity"
+                )
+            )["total"]
+            or 0
+        ) + self.planned_quantity
+
+    @property
+    def remaining_capacity(self):
+        return (
+            self.greenhouse_capacity
+            - self.greenhouse_planned_quantity
+        )
+
+    @property
+    def overbooked_quantity(self):
+        if self.remaining_capacity >= 0:
+            return 0
+
+        return abs(
+            self.remaining_capacity
+        )
+
+    @property
+    def greenhouse_overbooked(self):
+        return (
+            self.greenhouse_planned_quantity >
+            self.greenhouse_capacity
+        )
+
+    @property
+    def sticking_monday(self):
+        try:
+            week, year = self.sticking_week.split("-")
+
+            return date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def planting_monday(self):
+        try:
+            week, year = self.planting_week.split("-")
+
+            return date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def production_end_monday(self):
+        try:
+            week, year = self.production_end_week.split("-")
+
+            return date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
+        except (ValueError, TypeError):
+            return None
+
+    def calculate_planting_week(self):
+        week, year = self.sticking_week.split("-")
+
+        sticking_date = date.fromisocalendar(
+            int(year),
+            int(week),
+            1,
+        )
+
+        planting_date = (
+            sticking_date +
+            timedelta(weeks=4)
+        )
+
+        iso_year, iso_week, _ = (
+            planting_date.isocalendar()
+        )
+
+        return f"{iso_week}-{iso_year}"
+
+    def generate_reference(self):
+        crop_code = (
+            self.variety.subgroup.crop.crop_code
+        )
+
+        week, year = self.sticking_week.split("-")
+
+        sequence = (
+            StickingPlanLine.objects.filter(
+                greenhouse=self.greenhouse,
+                sticking_week=self.sticking_week,
+            ).count()
+            + 1
+        )
+
+        return (
+            f"SP-"
+            f"{crop_code}-"
+            f"{self.greenhouse.greenhouse_code}-"
+            f"{week}-"
+            f"{year}-"
+            f"{sequence:03d}"
+        )
+
+    def save(self, *args, **kwargs):
+        if (
+            not self.planting_week
+            or not self.planting_week_override
+        ):
+            self.planting_week = (
+                self.calculate_planting_week()
+            )
+
+        if not self.reference:
+            self.reference = (
+                self.generate_reference()
+            )
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.reference

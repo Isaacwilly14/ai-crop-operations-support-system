@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Upload Sticking Plan</title>
+</head>
+
+<body>
+
+    <h1>Upload Sticking Plan</h1>
+
+    {% if message %}
+        <p style="color:green;">
+            {{ message }}
+        </p>
+    {% endif %}
+
+    <form
+        method="post"
+        enctype="multipart/form-data"
+    >
+
+        {% csrf_token %}
+
+        <input
+            type="file"
+            name="file"
+        >
+
+        <button type="submit">
+            Upload
+        </button>
+
+    </form>
+
+</body>
+
+</html>
