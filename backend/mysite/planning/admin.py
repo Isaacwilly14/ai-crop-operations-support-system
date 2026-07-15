@@ -1,11 +1,15 @@
 from django.contrib import admin
 
+from .models import BufferHistory
 from .models import (
     ImportBatch,
     ImportedStickingPlanRow,
     StickingPlanHeader,
     StickingPlanLine,
-    AllocationProposal,
+)
+
+admin.site.register(
+    BufferHistory
 )
 
 
@@ -81,8 +85,16 @@ class StickingPlanHeaderAdmin(admin.ModelAdmin):
     )
 
 
+# FIX: Changed decorator argument from 'StickingPlanLineAdmin' to 'StickingPlanLine'
 @admin.register(StickingPlanLine)
 class StickingPlanLineAdmin(admin.ModelAdmin):
+
+    # PERFORMANCE BOOST: Fetches foreign key relations in 1 query instead of N+1
+    list_select_related = (
+        "header",
+        "variety",
+        "greenhouse",
+    )
 
     list_display = (
         "short_reference",
@@ -125,6 +137,10 @@ class StickingPlanLineAdmin(admin.ModelAdmin):
 
     @admin.display(description="Ref")
     def short_reference(self, obj):
+        # Fallback guard in case sticking_week or reference are empty
+        if not obj.sticking_week or not obj.reference:
+            return f"{obj.greenhouse.greenhouse_code}/--/---"
+
         week = obj.sticking_week.split("-")[0]
 
         return (
@@ -136,21 +152,27 @@ class StickingPlanLineAdmin(admin.ModelAdmin):
     @admin.display(description="Variety")
     def variety_display(self, obj):
         return obj.variety.variety_code
-@admin.register(AllocationProposal)
-class AllocationProposalAdmin(admin.ModelAdmin):
 
-    list_display = (
-        "sticking_plan_line",
-        "greenhouse",
-        "proposed_capacity",
-        "status",
-        "created_at",
-    )
+    @admin.display(description="Capacity")
+    def greenhouse_capacity(self, obj):
+        return obj.greenhouse_capacity
 
-    list_filter = (
-        "status",
-    )
+    @admin.display(description="Planned")
+    def greenhouse_planned_quantity(self, obj):
+        return obj.greenhouse_planned_quantity
 
-    ordering = (
-        "-created_at",
-    )
+    @admin.display(description="Remaining")
+    def remaining_capacity(self, obj):
+        return obj.remaining_capacity
+
+    @admin.display(description="Overbooked Qty")
+    def overbooked_quantity(self, obj):
+        return obj.overbooked_quantity
+
+    @admin.display(boolean=True, description="Overbooked?")
+    def greenhouse_overbooked(self, obj):
+        return obj.greenhouse_overbooked
+
+    @admin.display(boolean=True, description="Exceeds Capacity?")
+    def exceeds_capacity(self, obj):
+        return obj.exceeds_capacity

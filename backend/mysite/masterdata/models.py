@@ -640,6 +640,7 @@ class GreenhouseBed(models.Model):
             f"{self.side} - Bed {self.bed_no}"
         )
 class Variety(models.Model):
+
     variety_code = models.CharField(
         max_length=5,
         unique=True
@@ -663,8 +664,33 @@ class Variety(models.Model):
         blank=True
     )
 
+    # AI Planning Fields
+
+    default_buffer_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=2.00
+    )
+
+    default_urc_per_bag = models.IntegerField(
+        default=2
+    )
+
+    rooting_risk_level = models.CharField(
+        max_length=20,
+        choices=[
+            ("LOW", "Low"),
+            ("MEDIUM", "Medium"),
+            ("HIGH", "High"),
+        ],
+        default="MEDIUM"
+    )
+
     def __str__(self):
-        return self.variety_name
+        return (
+            f"{self.variety_code} - "
+            f"{self.variety_name}"
+        )
 
 
 class ProductionAllocation(models.Model):

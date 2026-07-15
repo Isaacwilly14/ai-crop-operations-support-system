@@ -57,42 +57,20 @@
 
         <tr>
 
-            <td>
-                {{ row.greenhouse.greenhouse_code }}
-            </td>
+            <td>{{ row.greenhouse.greenhouse_code }}</td>
+            <td>{{ row.capacity }}</td>
+            <td>{{ row.planned }}</td>
+            <td>{{ row.remaining }}</td>
+            <td>{{ row.utilization }}</td>
 
             <td>
-                {{ row.capacity }}
-            </td>
-
-            <td>
-                {{ row.planned }}
-            </td>
-
-            <td>
-                {{ row.remaining }}
-            </td>
-
-            <td>
-                {{ row.utilization }}
-            </td>
-
-            <td>
-
                 {% if row.status == "OVERBOOKED" %}
-
                     🔥 OVERBOOKED
-
                 {% elif row.status == "WARNING" %}
-
                     ⚠ WARNING
-
                 {% else %}
-
                     ✅ SAFE
-
                 {% endif %}
-
             </td>
 
         </tr>
@@ -108,20 +86,32 @@
     <ul>
 
         <li>
-            /planning/upload/
+            <a href="/planning/upload/">
                 Upload Sticking Plan
             </a>
         </li>
 
         <li>
-            /planning/batches/
+            <a href="/planning/batches/">
                 Import Batches
             </a>
         </li>
 
         <li>
-            /planning/validation-errors/
+            <a href="/planning/validation-errors/">
                 Validation Errors
+            </a>
+        </li>
+
+        <li>
+            <a href="/planning/recommendations/">
+                Greenhouse Recommendations
+            </a>
+        </li>
+
+        <li>
+            <a href="/allocations/">
+                Allocation Dashboard
             </a>
         </li>
 

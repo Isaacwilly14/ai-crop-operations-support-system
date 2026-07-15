@@ -43,7 +43,8 @@ def upload_sticking_plan(request):
             try:
 
                 df = pd.read_excel(
-                    batch.uploaded_file.path
+                    batch.uploaded_file.path,
+                    engine="openpyxl"
                 )
 
                 imported_rows = 0
@@ -120,11 +121,11 @@ def upload_sticking_plan(request):
                     f"Invalid: {invalid_rows}."
                 )
 
-            except Exception as e:
+            except Exception:
 
-                message = (
-                    f"Import failed: {e}"
-                )
+                import traceback
+
+                message = traceback.format_exc()
 
     return render(
         request,
@@ -133,8 +134,6 @@ def upload_sticking_plan(request):
             "message": message
         }
     )
-
-
 def validation_errors(request):
 
     invalid_rows = (

@@ -56,6 +56,11 @@ class ImportedStickingPlanRow(models.Model):
         ("INVALID", "Invalid"),
     ]
 
+    BUFFER_SOURCE_CHOICES = [
+        ("DEFAULT", "Default"),
+        ("OVERRIDE", "Override"),
+    ]
+
     import_batch = models.ForeignKey(
         ImportBatch,
         on_delete=models.CASCADE,
@@ -90,6 +95,42 @@ class ImportedStickingPlanRow(models.Model):
     )
 
     urc_per_bag = models.IntegerField(
+        default=0,
+    )
+
+    # ==========================
+    # BUFFER MANAGEMENT
+    # ==========================
+
+    buffer_override_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    override_reason = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    override_notes = models.TextField(
+        blank=True,
+    )
+
+    applied_buffer_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    buffer_source = models.CharField(
+        max_length=20,
+        choices=BUFFER_SOURCE_CHOICES,
+        default="DEFAULT",
+    )
+
+    target_quantity = models.IntegerField(
         default=0,
     )
 
@@ -159,6 +200,7 @@ class ImportedStickingPlanRow(models.Model):
 
     @property
     def validation_errors(self):
+
         errors = []
 
         if not self.variety_exists:
@@ -178,7 +220,8 @@ class ImportedStickingPlanRow(models.Model):
 
         if not self.valid_end_week:
             errors.append(
-                f"Invalid Production End Week: {self.production_end_week}"
+                f"Invalid Production End Week: "
+                f"{self.production_end_week}"
             )
 
         if not self.quantity_valid:
@@ -193,24 +236,86 @@ class ImportedStickingPlanRow(models.Model):
 
         return errors
 
+    def calculate_buffer(self):
+
+        try:
+
+            variety = Variety.objects.get(
+                variety_code=self.variety_code
+            )
+
+            default_buffer = (
+                variety.default_buffer_percent
+            )
+
+        except Variety.DoesNotExist:
+
+            default_buffer = 0
+
+        if self.buffer_override_percent is not None:
+
+            self.applied_buffer_percent = (
+                self.buffer_override_percent
+            )
+
+            self.buffer_source = "OVERRIDE"
+
+        else:
+
+            self.applied_buffer_percent = (
+                default_buffer
+            )
+
+            self.buffer_source = "DEFAULT"
+
+    def calculate_target_quantity(self):
+
+        self.target_quantity = round(
+            self.planned_quantity
+            *
+            (
+                1 +
+                (
+                    float(
+                        self.applied_buffer_percent
+                    )
+                    / 100
+                )
+            )
+        )
+
     def validate_row(self):
+
+        self.calculate_buffer()
+
+        self.calculate_target_quantity()
+
         errors = self.validation_errors
 
         if errors:
+
             self.validation_status = "INVALID"
-            self.validation_message = "\n".join(errors)
+
+            self.validation_message = (
+                "\n".join(errors)
+            )
+
         else:
+
             self.validation_status = "VALID"
-            self.validation_message = "Validation Passed"
+
+            self.validation_message = (
+                "Validation Passed"
+            )
 
         self.save()
 
     def __str__(self):
+
         return (
             f"{self.import_batch.batch_reference} "
             f"- Row {self.row_number}"
         )
-
 
 class StickingPlanHeader(models.Model):
 
@@ -588,4 +693,97 @@ class BedAllocation(models.Model):
             f"{self.bed}"
             f" - "
             f"{self.allocated_quantity}"
+        )
+    
+class BufferHistory(models.Model):
+
+    variety = models.ForeignKey(
+        Variety,
+        on_delete=models.CASCADE
+    )
+
+    greenhouse = models.ForeignKey(
+        Greenhouse,
+        on_delete=models.CASCADE
+    )
+
+    sticking_week = models.CharField(
+        max_length=10
+    )
+
+    demand_quantity = models.IntegerField()
+
+    target_quantity = models.IntegerField()
+
+    rooted_quantity = models.IntegerField(
+        default=0
+    )
+
+    loss_quantity = models.IntegerField(
+        default=0
+    )
+
+    loss_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0
+    )
+
+    buffer_used = models.DecimalField(
+        max_digits=5,
+        decimal_places=2
+    )
+
+    buffer_source = models.CharField(
+        max_length=20,
+        default="DEFAULT"
+    )
+
+    override_reason = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def calculate_loss(self):
+
+        self.loss_quantity = max(
+            self.target_quantity -
+            self.rooted_quantity,
+            0
+        )
+
+        if self.target_quantity > 0:
+
+            self.loss_percent = round(
+                (
+                    self.loss_quantity
+                    /
+                    self.target_quantity
+                ) * 100,
+                2
+            )
+
+    def save(
+        self,
+        *args,
+        **kwargs
+    ):
+
+        self.calculate_loss()
+
+        super().save(
+            *args,
+            **kwargs
+        )
+
+    def __str__(self):
+
+        return (
+            f"{self.variety.variety_code}"
+            f" - "
+            f"{self.loss_percent}%"
         )
