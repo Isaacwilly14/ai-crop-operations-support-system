@@ -1,17 +1,14 @@
 from django.db import models
-
 from django.shortcuts import (
     render,
     get_object_or_404,
 )
-
 import pandas as pd
 
 from masterdata.models import (
     Variety,
     Greenhouse,
 )
-
 from .models import (
     ImportBatch,
     ImportedStickingPlanRow,
@@ -23,25 +20,23 @@ from .models import (
 
 
 def upload_sticking_plan(request):
-
     message = None
 
     if request.method == "POST":
-
         uploaded_file = request.FILES.get("file")
 
         if uploaded_file:
+            # FIX: Use max ID instead of count() to prevent duplicate reference crashes when batches are deleted
+            max_id = ImportBatch.objects.aggregate(max_id=models.Max('id'))['max_id'] or 0
+            next_num = max_id + 1
 
             batch = ImportBatch.objects.create(
-                batch_reference=(
-                    f"IMP-{ImportBatch.objects.count() + 1:03d}"
-                ),
+                batch_reference=f"IMP-{next_num:03d}",
                 file_name=uploaded_file.name,
                 uploaded_file=uploaded_file,
             )
 
             try:
-
                 df = pd.read_excel(
                     batch.uploaded_file.path,
                     engine="openpyxl"
@@ -52,62 +47,35 @@ def upload_sticking_plan(request):
                 invalid_rows = 0
 
                 for index, row in df.iterrows():
+                    # Extract raw values to safely handle pandas NaN floats or clean strings
+                    raw_variety_code = row.get("VarietyCode", "")
+                    raw_variety_name = row.get("VarietyName", "")
+                    raw_greenhouse = row.get("Greenhouse", "")
+                    raw_sticking_week = row.get("StickingWeek", "")
+                    raw_end_week = row.get("EndWeek", "")
+                    
+                    raw_qty = row.get("Quantity", 0)
+                    planned_qty = 0 if pd.isna(raw_qty) else int(raw_qty)
 
-                    imported_row = (
-                        ImportedStickingPlanRow.objects.create(
-                            import_batch=batch,
-                            row_number=index + 1,
-                            variety_code=str(
-                                row.get(
-                                    "VarietyCode",
-                                    ""
-                                )
-                            ).strip(),
-                            variety_name=str(
-                                row.get(
-                                    "VarietyName",
-                                    ""
-                                )
-                            ).strip(),
-                            greenhouse_code=str(
-                                row.get(
-                                    "Greenhouse",
-                                    ""
-                                )
-                            ).strip(),
-                            sticking_week=str(
-                                row.get(
-                                    "StickingWeek",
-                                    ""
-                                )
-                            ).strip(),
-                            production_end_week=str(
-                                row.get(
-                                    "EndWeek",
-                                    ""
-                                )
-                            ).strip(),
-                            planned_quantity=int(
-                                row.get(
-                                    "Quantity",
-                                    0
-                                ) or 0
-                            ),
-                            urc_per_bag=int(
-                                row.get(
-                                    "URCPerBag",
-                                    0
-                                ) or 0
-                            ),
-                        )
+                    raw_urc = row.get("URCPerBag", 0)
+                    urc_val = 0 if pd.isna(raw_urc) else int(raw_urc)
+
+                    # FIX: Safely handles closed parenthesis execution that was missing/cut off
+                    imported_row = ImportedStickingPlanRow.objects.create(
+                        import_batch=batch,
+                        row_number=index + 1,
+                        variety_code=str("" if pd.isna(raw_variety_code) else raw_variety_code).strip(),
+                        variety_name=str("" if pd.isna(raw_variety_name) else raw_variety_name).strip(),
+                        greenhouse_code=str("" if pd.isna(raw_greenhouse) else raw_greenhouse).strip(),
+                        sticking_week=str("" if pd.isna(raw_sticking_week) else raw_sticking_week).strip(),
+                        production_end_week=str("" if pd.isna(raw_end_week) else raw_end_week).strip(),
+                        planned_quantity=planned_qty,
+                        urc_per_bag=urc_val,
                     )
 
                     imported_row.validate_row()
 
-                    if (
-                        imported_row.validation_status
-                        == "VALID"
-                    ):
+                    if imported_row.validation_status == "VALID":
                         valid_rows += 1
                     else:
                         invalid_rows += 1
@@ -122,9 +90,7 @@ def upload_sticking_plan(request):
                 )
 
             except Exception:
-
                 import traceback
-
                 message = traceback.format_exc()
 
     return render(
@@ -134,15 +100,14 @@ def upload_sticking_plan(request):
             "message": message
         }
     )
-def validation_errors(request):
 
+
+def validation_errors(request):
     invalid_rows = (
         ImportedStickingPlanRow.objects.filter(
             validation_status="INVALID"
         )
-        .order_by(
-            "row_number"
-        )
+        .order_by("row_number")
     )
 
     return render(
@@ -155,7 +120,6 @@ def validation_errors(request):
 
 
 def approve_batch(request, batch_id):
-
     batch = get_object_or_404(
         ImportBatch,
         id=batch_id
@@ -175,9 +139,7 @@ def approve_batch(request, batch_id):
     created_lines = 0
 
     for row in valid_rows:
-
         try:
-
             variety = Variety.objects.get(
                 variety_code=row.variety_code
             )
@@ -216,7 +178,6 @@ def approve_batch(request, batch_id):
 
 
 def batch_list(request):
-
     batches = (
         ImportBatch.objects.all()
         .order_by("-imported_at")
@@ -230,8 +191,8 @@ def batch_list(request):
         }
     )
 
-def dashboard(request):
 
+def dashboard(request):
     total_batches = (
         ImportBatch.objects.count()
     )
@@ -259,7 +220,6 @@ def dashboard(request):
     greenhouse_status = []
 
     for greenhouse in Greenhouse.objects.all():
-
         planned_quantity = (
             StickingPlanLine.objects.filter(
                 greenhouse=greenhouse
@@ -273,30 +233,19 @@ def dashboard(request):
         )
 
         capacity = greenhouse.total_capacity
-
-        remaining = (
-            capacity -
-            planned_quantity
-        )
-
+        remaining = capacity - planned_quantity
         utilization = 0
 
         if capacity > 0:
-
             utilization = round(
-                (
-                    planned_quantity
-                    / capacity
-                ) * 100,
+                (planned_quantity / capacity) * 100,
                 2
             )
 
         if utilization >= 100:
             status = "OVERBOOKED"
-
         elif utilization >= 90:
             status = "WARNING"
-
         else:
             status = "SAFE"
 
@@ -324,8 +273,8 @@ def dashboard(request):
         }
     )
 
-def revalidate_batch(request, batch_id):
 
+def revalidate_batch(request, batch_id):
     batch = get_object_or_404(
         ImportBatch,
         id=batch_id
@@ -341,7 +290,6 @@ def revalidate_batch(request, batch_id):
     invalid_rows = 0
 
     for row in rows:
-
         row.validate_row()
 
         if row.validation_status == "VALID":
@@ -361,8 +309,9 @@ def revalidate_batch(request, batch_id):
             "invalid_rows": invalid_rows,
         }
     )
-def batch_detail(request, batch_id):
 
+
+def batch_detail(request, batch_id):
     batch = get_object_or_404(
         ImportBatch,
         id=batch_id
@@ -393,12 +342,12 @@ def batch_detail(request, batch_id):
             "invalid_rows": invalid_rows,
         }
     )
-def greenhouse_recommendations(request):
 
+
+def greenhouse_recommendations(request):
     recommendations = []
 
     for greenhouse in Greenhouse.objects.all():
-
         planned_quantity = (
             StickingPlanLine.objects.filter(
                 greenhouse=greenhouse
@@ -437,16 +386,14 @@ def greenhouse_recommendations(request):
             "recommendations": recommendations
         }
     )
+
+
 def variety_recommendations(request, variety_code):
-
     try:
-
         variety = Variety.objects.get(
             variety_code=variety_code
         )
-
     except Variety.DoesNotExist:
-
         return render(
             request,
             "planning/variety_recommendations.html",
@@ -458,7 +405,6 @@ def variety_recommendations(request, variety_code):
     recommendations = []
 
     for greenhouse in Greenhouse.objects.all():
-
         planned_quantity = (
             StickingPlanLine.objects.filter(
                 greenhouse=greenhouse
@@ -517,16 +463,14 @@ def variety_recommendations(request, variety_code):
             "recommendations": recommendations,
         }
     )
+
+
 def allocation_proposal(request, variety_code):
-
     try:
-
         variety = Variety.objects.get(
             variety_code=variety_code
         )
-
     except Variety.DoesNotExist:
-
         return render(
             request,
             "planning/allocation_proposal.html",
@@ -538,7 +482,6 @@ def allocation_proposal(request, variety_code):
     candidates = []
 
     for greenhouse in Greenhouse.objects.all():
-
         planned_quantity = (
             StickingPlanLine.objects.filter(
                 greenhouse=greenhouse
@@ -600,11 +543,12 @@ def allocation_proposal(request, variety_code):
             "recommendation": recommendation,
         }
     )
+
+
 def create_allocation_proposal(
     request,
     sticking_plan_line_id
 ):
-
     line = get_object_or_404(
         StickingPlanLine,
         id=sticking_plan_line_id
@@ -625,8 +569,9 @@ def create_allocation_proposal(
             "proposal": proposal
         }
     )
-def accept_allocation(request, proposal_id):
 
+
+def accept_allocation(request, proposal_id):
     proposal = get_object_or_404(
         AllocationProposal,
         id=proposal_id
@@ -638,7 +583,6 @@ def accept_allocation(request, proposal_id):
     proposal.sticking_plan_line.status = (
         "ALLOCATED"
     )
-
     proposal.sticking_plan_line.save()
 
     return render(
@@ -648,8 +592,9 @@ def accept_allocation(request, proposal_id):
             "proposal": proposal
         }
     )
-def allocation_dashboard(request):
 
+
+def allocation_dashboard(request):
     proposals = (
         AllocationProposal.objects.all()
         .order_by("-created_at")
@@ -696,6 +641,9 @@ def allocation_dashboard(request):
             "total_allocated": total_allocated,
         }
     )
+
+
+# FIX: Kept global import at bottom to preserve exact modular architecture
 from masterdata.models import GreenhouseBed
 
 
@@ -703,7 +651,6 @@ def create_bed_allocation(
     request,
     allocation_id
 ):
-
     allocation = get_object_or_404(
         AllocationProposal,
         id=allocation_id
@@ -717,7 +664,6 @@ def create_bed_allocation(
     )
 
     if not bed:
-
         return render(
             request,
             "planning/bed_allocation.html",

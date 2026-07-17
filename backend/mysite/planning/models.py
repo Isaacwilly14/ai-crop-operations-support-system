@@ -1,9 +1,14 @@
 from datetime import date, timedelta
 import re
 
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Sum
 
-from masterdata.models import Variety, Greenhouse
+from masterdata.models import (
+    Variety,
+    Greenhouse,
+)
 
 
 class ImportBatch(models.Model):
@@ -18,22 +23,24 @@ class ImportBatch(models.Model):
     batch_reference = models.CharField(
         max_length=50,
         unique=True,
+        db_index=True,
     )
 
     file_name = models.CharField(
-    max_length=255
-)
+        max_length=255,
+    )
 
     uploaded_file = models.FileField(
-    upload_to="imports/",
-    null=True,
-    blank=True
-)
+        upload_to="imports/",
+        null=True,
+        blank=True,
+    )
 
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default="UPLOADED",
+        db_index=True,
     )
 
     imported_at = models.DateTimeField(
@@ -44,10 +51,13 @@ class ImportBatch(models.Model):
         blank=True,
     )
 
+    class Meta:
+        ordering = ["-imported_at"]
+        verbose_name = "Import Batch"
+        verbose_name_plural = "Import Batches"
+
     def __str__(self):
         return self.batch_reference
-
-
 class ImportedStickingPlanRow(models.Model):
 
     VALIDATION_CHOICES = [
@@ -71,6 +81,7 @@ class ImportedStickingPlanRow(models.Model):
 
     variety_code = models.CharField(
         max_length=20,
+        db_index=True,
     )
 
     variety_name = models.CharField(
@@ -80,10 +91,12 @@ class ImportedStickingPlanRow(models.Model):
 
     greenhouse_code = models.CharField(
         max_length=20,
+        db_index=True,
     )
 
     sticking_week = models.CharField(
         max_length=10,
+        db_index=True,
     )
 
     production_end_week = models.CharField(
@@ -138,6 +151,7 @@ class ImportedStickingPlanRow(models.Model):
         max_length=20,
         choices=VALIDATION_CHOICES,
         default="PENDING",
+        db_index=True,
     )
 
     validation_message = models.TextField(
@@ -153,6 +167,15 @@ class ImportedStickingPlanRow(models.Model):
         auto_now_add=True,
     )
 
+    class Meta:
+        ordering = ["row_number"]
+        indexes = [
+            models.Index(fields=["variety_code"]),
+            models.Index(fields=["greenhouse_code"]),
+            models.Index(fields=["sticking_week"]),
+            models.Index(fields=["validation_status"]),
+        ]
+
     @property
     def variety_exists(self):
         return Variety.objects.filter(
@@ -167,28 +190,35 @@ class ImportedStickingPlanRow(models.Model):
 
     @property
     def valid_sticking_week(self):
-        pattern = r"^\d{1,2}-\d{4}$"
+        try:
+            week, year = self.sticking_week.split("-")
 
-        if not re.match(pattern, self.sticking_week):
+            date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
+
+            return True
+
+        except (ValueError, TypeError):
             return False
-
-        week, year = self.sticking_week.split("-")
-
-        return 1 <= int(week) <= 53
 
     @property
     def valid_end_week(self):
-        pattern = r"^\d{1,2}-\d{4}$"
+        try:
+            week, year = self.production_end_week.split("-")
 
-        if not re.match(
-            pattern,
-            self.production_end_week,
-        ):
+            date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
+
+            return True
+
+        except (ValueError, TypeError):
             return False
-
-        week, year = self.production_end_week.split("-")
-
-        return 1 <= int(week) <= 53
 
     @property
     def quantity_valid(self):
@@ -236,10 +266,26 @@ class ImportedStickingPlanRow(models.Model):
 
         return errors
 
+    def calculate_urc(self):
+
+        try:
+            variety = Variety.objects.get(
+                variety_code=self.variety_code
+            )
+
+            if self.urc_per_bag <= 0:
+                self.urc_per_bag = (
+                    variety.default_urc_per_bag
+                )
+
+        except Variety.DoesNotExist:
+
+            if self.urc_per_bag <= 0:
+                self.urc_per_bag = 2
+
     def calculate_buffer(self):
 
         try:
-
             variety = Variety.objects.get(
                 variety_code=self.variety_code
             )
@@ -249,7 +295,6 @@ class ImportedStickingPlanRow(models.Model):
             )
 
         except Variety.DoesNotExist:
-
             default_buffer = 0
 
         if self.buffer_override_percent is not None:
@@ -272,22 +317,46 @@ class ImportedStickingPlanRow(models.Model):
 
         self.target_quantity = round(
             self.planned_quantity
-            *
-            (
-                1 +
-                (
-                    float(
-                        self.applied_buffer_percent
-                    )
+            * (
+                1
+                + (
+                    float(self.applied_buffer_percent)
                     / 100
                 )
             )
         )
 
+    def clean(self):
+
+        errors = {}
+
+        if self.planned_quantity <= 0:
+            errors["planned_quantity"] = (
+                "Quantity must be greater than zero."
+            )
+
+        if self.urc_per_bag < 0:
+            errors["urc_per_bag"] = (
+                "URC Per Bag cannot be negative."
+            )
+
+        if not self.valid_sticking_week:
+            errors["sticking_week"] = (
+                "Invalid ISO week format."
+            )
+
+        if not self.valid_end_week:
+            errors["production_end_week"] = (
+                "Invalid ISO week format."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
     def validate_row(self):
 
+        self.calculate_urc()
         self.calculate_buffer()
-
         self.calculate_target_quantity()
 
         errors = self.validation_errors
@@ -310,13 +379,19 @@ class ImportedStickingPlanRow(models.Model):
 
         self.save()
 
+    def save(self, *args, **kwargs):
+
+        self.calculate_urc()
+        self.calculate_buffer()
+        self.calculate_target_quantity()
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-
         return (
-            f"{self.import_batch.batch_reference} "
-            f"- Row {self.row_number}"
+            f"{self.import_batch.batch_reference}"
+            f" - Row {self.row_number}"
         )
-
 class StickingPlanHeader(models.Model):
 
     STATUS_CHOICES = [
@@ -330,6 +405,7 @@ class StickingPlanHeader(models.Model):
         max_length=50,
         unique=True,
         blank=True,
+        db_index=True,
     )
 
     season = models.CharField(
@@ -341,12 +417,14 @@ class StickingPlanHeader(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name="sticking_plans",
     )
 
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default="DRAFT",
+        db_index=True,
     )
 
     notes = models.TextField(
@@ -357,13 +435,25 @@ class StickingPlanHeader(models.Model):
         auto_now_add=True,
     )
 
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Sticking Plan Header"
+        verbose_name_plural = "Sticking Plan Headers"
+
     def generate_reference(self):
 
         year = date.today().year
 
+        last_record = (
+            StickingPlanHeader.objects
+            .order_by("-id")
+            .first()
+        )
+
         sequence = (
-            StickingPlanHeader.objects.count()
-            + 1
+            last_record.id + 1
+            if last_record
+            else 1
         )
 
         return (
@@ -371,6 +461,13 @@ class StickingPlanHeader(models.Model):
             f"{year}-"
             f"{sequence:03d}"
         )
+
+    def clean(self):
+
+        if not self.season:
+            raise ValidationError(
+                {"season": "Season is required."}
+            )
 
     def save(self, *args, **kwargs):
 
@@ -383,7 +480,6 @@ class StickingPlanHeader(models.Model):
 
     def __str__(self):
         return self.reference
-
 class StickingPlanLine(models.Model):
 
     STATUS_CHOICES = [
@@ -402,6 +498,7 @@ class StickingPlanLine(models.Model):
         max_length=50,
         unique=True,
         blank=True,
+        db_index=True,
     )
 
     variety = models.ForeignKey(
@@ -416,6 +513,7 @@ class StickingPlanLine(models.Model):
 
     sticking_week = models.CharField(
         max_length=10,
+        db_index=True,
     )
 
     planting_week = models.CharField(
@@ -447,6 +545,7 @@ class StickingPlanLine(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default="PLANNED",
+        db_index=True,
     )
 
     notes = models.TextField(
@@ -457,6 +556,18 @@ class StickingPlanLine(models.Model):
         auto_now_add=True,
     )
 
+    class Meta:
+        ordering = [
+            "sticking_week",
+            "greenhouse",
+            "variety",
+        ]
+        indexes = [
+            models.Index(fields=["greenhouse"]),
+            models.Index(fields=["sticking_week"]),
+            models.Index(fields=["status"]),
+        ]
+
     @property
     def crop(self):
         return self.variety.subgroup.crop
@@ -466,16 +577,29 @@ class StickingPlanLine(models.Model):
         return self.variety.growing_group
 
     @property
-    def urc_needed(self):
-        buffer_qty = (
-            self.planned_quantity *
-            float(self.buffer_percentage) / 100
+    def target_quantity(self):
+        return round(
+            self.planned_quantity
+            * (
+                1
+                + (
+                    float(self.buffer_percentage)
+                    / 100
+                )
+            )
         )
 
-        return round(
-            self.planned_quantity +
-            buffer_qty
-        )
+    @property
+    def urc_needed(self):
+
+        if self.urc_per_bag <= 0:
+            return 0
+
+        return (
+            self.target_quantity
+            + self.urc_per_bag
+            - 1
+        ) // self.urc_per_bag
 
     @property
     def greenhouse_capacity(self):
@@ -488,12 +612,13 @@ class StickingPlanLine(models.Model):
     @property
     def exceeds_capacity(self):
         return (
-            self.planned_quantity >
-            self.greenhouse.available_capacity
+            self.planned_quantity
+            > self.available_capacity
         )
 
     @property
     def greenhouse_planned_quantity(self):
+
         return (
             StickingPlanLine.objects.filter(
                 greenhouse=self.greenhouse,
@@ -501,7 +626,7 @@ class StickingPlanLine(models.Model):
             )
             .exclude(pk=self.pk)
             .aggregate(
-                total=models.Sum(
+                total=Sum(
                     "planned_quantity"
                 )
             )["total"]
@@ -510,6 +635,7 @@ class StickingPlanLine(models.Model):
 
     @property
     def remaining_capacity(self):
+
         return (
             self.greenhouse_capacity
             - self.greenhouse_planned_quantity
@@ -517,6 +643,7 @@ class StickingPlanLine(models.Model):
 
     @property
     def overbooked_quantity(self):
+
         if self.remaining_capacity >= 0:
             return 0
 
@@ -526,82 +653,124 @@ class StickingPlanLine(models.Model):
 
     @property
     def greenhouse_overbooked(self):
+
         return (
-            self.greenhouse_planned_quantity >
-            self.greenhouse_capacity
+            self.greenhouse_planned_quantity
+            > self.greenhouse_capacity
         )
 
     @property
     def sticking_monday(self):
+
         try:
-            week, year = self.sticking_week.split("-")
+
+            week, year = (
+                self.sticking_week.split("-")
+            )
 
             return date.fromisocalendar(
                 int(year),
                 int(week),
                 1,
             )
-        except (ValueError, TypeError):
+
+        except (
+            ValueError,
+            TypeError,
+        ):
             return None
 
     @property
     def planting_monday(self):
+
         try:
-            week, year = self.planting_week.split("-")
+
+            week, year = (
+                self.planting_week.split("-")
+            )
 
             return date.fromisocalendar(
                 int(year),
                 int(week),
                 1,
             )
-        except (ValueError, TypeError):
+
+        except (
+            ValueError,
+            TypeError,
+            AttributeError,
+        ):
             return None
 
     @property
     def production_end_monday(self):
+
         try:
-            week, year = self.production_end_week.split("-")
+
+            week, year = (
+                self.production_end_week.split("-")
+            )
 
             return date.fromisocalendar(
                 int(year),
                 int(week),
                 1,
             )
-        except (ValueError, TypeError):
+
+        except (
+            ValueError,
+            TypeError,
+        ):
             return None
 
     def calculate_planting_week(self):
-        week, year = self.sticking_week.split("-")
 
-        sticking_date = date.fromisocalendar(
-            int(year),
-            int(week),
-            1,
+        week, year = (
+            self.sticking_week.split("-")
+        )
+
+        sticking_date = (
+            date.fromisocalendar(
+                int(year),
+                int(week),
+                1,
+            )
         )
 
         planting_date = (
-            sticking_date +
-            timedelta(weeks=4)
+            sticking_date
+            + timedelta(weeks=4)
         )
 
         iso_year, iso_week, _ = (
             planting_date.isocalendar()
         )
 
-        return f"{iso_week}-{iso_year}"
-
-    def generate_reference(self):
-        crop_code = (
-            self.variety.subgroup.crop.crop_code
+        return (
+            f"{iso_week:02d}"
+            f"-{iso_year}"
         )
 
-        week, year = self.sticking_week.split("-")
+    def generate_reference(self):
+
+        crop_code = (
+            self.variety
+            .subgroup
+            .crop
+            .crop_code
+        )
+
+        week, year = (
+            self.sticking_week.split("-")
+        )
 
         sequence = (
             StickingPlanLine.objects.filter(
                 greenhouse=self.greenhouse,
                 sticking_week=self.sticking_week,
-            ).count()
+            )
+            .exclude(pk=self.pk)
+            .count()
             + 1
         )
 
@@ -614,7 +783,32 @@ class StickingPlanLine(models.Model):
             f"{sequence:03d}"
         )
 
+    def clean(self):
+
+        errors = {}
+
+        if self.planned_quantity <= 0:
+            errors["planned_quantity"] = (
+                "Quantity must be greater than zero."
+            )
+
+        if self.urc_per_bag <= 0:
+            errors["urc_per_bag"] = (
+                "URC Per Bag must be greater than zero."
+            )
+
+        if self.exceeds_capacity:
+            errors["planned_quantity"] = (
+                "Quantity exceeds available greenhouse capacity."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
+
+        self.full_clean()
+
         if (
             not self.planting_week
             or not self.planting_week_override
@@ -643,12 +837,12 @@ class AllocationProposal(models.Model):
     sticking_plan_line = models.ForeignKey(
         StickingPlanLine,
         on_delete=models.CASCADE,
-        related_name="allocation_proposals"
+        related_name="allocation_proposals",
     )
 
     greenhouse = models.ForeignKey(
         Greenhouse,
-        on_delete=models.PROTECT
+        on_delete=models.PROTECT,
     )
 
     proposed_capacity = models.IntegerField()
@@ -656,12 +850,50 @@ class AllocationProposal(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="PROPOSED"
+        default="PROPOSED",
+        db_index=True,
     )
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["greenhouse"]),
+        ]
+
+    def clean(self):
+
+        if self.proposed_capacity <= 0:
+            raise ValidationError(
+                {
+                    "proposed_capacity":
+                    "Proposed capacity must be greater than zero."
+                }
+            )
+
+    @property
+    def available_greenhouse_capacity(self):
+        return self.greenhouse.available_capacity
+
+    @property
+    def exceeds_greenhouse_capacity(self):
+        return (
+            self.proposed_capacity
+            > self.greenhouse.available_capacity
+        )
+
+    def save(self, *args, **kwargs):
+
+        self.full_clean()
+
+        super().save(
+            *args,
+            **kwargs,
+        )
 
     def __str__(self):
         return (
@@ -674,19 +906,41 @@ class BedAllocation(models.Model):
     allocation = models.ForeignKey(
         AllocationProposal,
         on_delete=models.CASCADE,
-        related_name="bed_allocations"
+        related_name="bed_allocations",
     )
 
     bed = models.ForeignKey(
         "masterdata.GreenhouseBed",
-        on_delete=models.PROTECT
+        on_delete=models.PROTECT,
     )
 
     allocated_quantity = models.IntegerField()
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
+
+    class Meta:
+        ordering = ["bed"]
+
+    def clean(self):
+
+        if self.allocated_quantity <= 0:
+            raise ValidationError(
+                {
+                    "allocated_quantity":
+                    "Allocated quantity must be greater than zero."
+                }
+            )
+
+    def save(self, *args, **kwargs):
+
+        self.full_clean()
+
+        super().save(
+            *args,
+            **kwargs,
+        )
 
     def __str__(self):
         return (
@@ -694,21 +948,21 @@ class BedAllocation(models.Model):
             f" - "
             f"{self.allocated_quantity}"
         )
-    
 class BufferHistory(models.Model):
 
     variety = models.ForeignKey(
         Variety,
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
     )
 
     greenhouse = models.ForeignKey(
         Greenhouse,
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
     )
 
     sticking_week = models.CharField(
-        max_length=10
+        max_length=10,
+        db_index=True,
     )
 
     demand_quantity = models.IntegerField()
@@ -716,44 +970,79 @@ class BufferHistory(models.Model):
     target_quantity = models.IntegerField()
 
     rooted_quantity = models.IntegerField(
-        default=0
+        default=0,
     )
 
     loss_quantity = models.IntegerField(
-        default=0
+        default=0,
     )
 
     loss_percent = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=0
+        default=0,
     )
 
     buffer_used = models.DecimalField(
         max_digits=5,
-        decimal_places=2
+        decimal_places=2,
     )
 
     buffer_source = models.CharField(
         max_length=20,
-        default="DEFAULT"
+        default="DEFAULT",
     )
 
     override_reason = models.CharField(
         max_length=100,
-        blank=True
+        blank=True,
     )
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["sticking_week"]),
+            models.Index(fields=["variety"]),
+            models.Index(fields=["greenhouse"]),
+        ]
+
+    def clean(self):
+
+        errors = {}
+
+        if self.demand_quantity < 0:
+            errors["demand_quantity"] = (
+                "Demand quantity cannot be negative."
+            )
+
+        if self.target_quantity < 0:
+            errors["target_quantity"] = (
+                "Target quantity cannot be negative."
+            )
+
+        if self.rooted_quantity < 0:
+            errors["rooted_quantity"] = (
+                "Rooted quantity cannot be negative."
+            )
+
+        if self.buffer_used < 0:
+            errors["buffer_used"] = (
+                "Buffer used cannot be negative."
+            )
+
+        if errors:
+            raise ValidationError(errors)
 
     def calculate_loss(self):
 
         self.loss_quantity = max(
-            self.target_quantity -
-            self.rooted_quantity,
-            0
+            self.target_quantity
+            - self.rooted_quantity,
+            0,
         )
 
         if self.target_quantity > 0:
@@ -761,23 +1050,24 @@ class BufferHistory(models.Model):
             self.loss_percent = round(
                 (
                     self.loss_quantity
-                    /
-                    self.target_quantity
-                ) * 100,
-                2
+                    * 100
+                )
+                / self.target_quantity,
+                2,
             )
 
-    def save(
-        self,
-        *args,
-        **kwargs
-    ):
+        else:
+            self.loss_percent = 0
+
+    def save(self, *args, **kwargs):
+
+        self.full_clean()
 
         self.calculate_loss()
 
         super().save(
             *args,
-            **kwargs
+            **kwargs,
         )
 
     def __str__(self):
